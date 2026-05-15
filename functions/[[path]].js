@@ -1,30 +1,40 @@
-// functions/[[path]].js
 export async function onRequest(context) {
     const { request, env } = context;
     const url = new URL(request.url);
-    const baseUrl = url.origin;
 
     try {
-        // 使用 env.ASSETS.fetch 效率更高，直接从静态资源中读取
-        const listResp = await env.ASSETS.fetch(new URL(`${baseUrl}/image-list.json`));
+        // 1. 获取图片列表
+        // 注意：使用 env.ASSETS.fetch 直接读取部署好的静态文件
+        const listResp = await env.ASSETS.fetch(new URL('/image-list.json', request.url));
+        
         if (!listResp.ok) {
-            return new Response('图片列表未生成，请检查构建日志', { status: 500 });
+            return new Response('无法读取图片列表 (image-list.json)，请检查构建日志。', { status: 500 });
         }
 
         const data = await listResp.json();
         const images = data.images;
 
         if (!images || images.length === 0) {
-            return new Response('未找到图片', { status: 404 });
+            return new Response('image 文件夹中没有图片。', { status: 404 });
         }
 
+        // 2. 随机抽取一张
         const randomIndex = Math.floor(Math.random() * images.length);
         const imagePath = images[randomIndex];
 
-        // 同样建议使用 env.ASSETS.fetch
-        return env.ASSETS.fetch(new URL(`${baseUrl}${imagePath}`));
+        // 3. 读取图片内容并返回
+        const imageResp = await env.ASSETS.fetch(new URL(imagePath, request.url));
+        
+        // 复制原始 Headers 并强制设置不缓存，确保每次刷新都是随机图
+        const newHeaders = new Headers(imageResp.headers);
+        newHeaders.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+
+        return new Response(imageResp.body, {
+            status: imageResp.status,
+            headers: newHeaders
+        });
 
     } catch (err) {
-        return new Response('Error: ' + err.message, { status: 500 });
+        return new Response('服务器内部错误: ' + err.message, { status: 500 });
     }
 }
