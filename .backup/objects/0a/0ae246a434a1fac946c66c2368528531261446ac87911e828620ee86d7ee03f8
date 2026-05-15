@@ -1,0 +1,12 @@
+{
+    "name": "random-image-cf",
+    "version": "1.0.0",
+    "description": "Cloudflare Pages 随机图项目 - 访问即返回 image 文件夹中的随机图片",
+    "scripts": {
+        "generate-list": "node scripts/generate-list.js",
+        "deploy": "npm run generate-list && npx wrangler pages deploy ."
+    },
+    "devDependencies": {
+        "wrangler": "^3.0.0"
+    }
+}

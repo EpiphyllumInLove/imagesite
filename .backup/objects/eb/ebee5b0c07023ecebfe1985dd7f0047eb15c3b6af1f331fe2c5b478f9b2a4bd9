@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>随机图片</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background: #0f0f0f;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+        .container {
+            width: 100%;
+            max-width: 100vw;
+            max-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            overflow: hidden;
+            position: relative;
+        }
+        #randomImage {
+            max-width: 100vw;
+            max-height: 100vh;
+            object-fit: contain;
+            display: block;
+            transition: opacity 0.3s ease;
+        }
+        .refresh-btn {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            background: rgba(255,255,255,0.15);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255,255,255,0.2);
+            color: white;
+            padding: 12px 24px;
+            border-radius: 30px;
+            font-size: 15px;
+            cursor: pointer;
+            transition: all 0.3s;
+            z-index: 100;
+            letter-spacing: 0.5px;
+        }
+        .refresh-btn:hover {
+            background: rgba(255,255,255,0.25);
+            transform: scale(1.05);
+        }
+        .loading {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: rgba(255,255,255,0.4);
+            font-size: 18px;
+            z-index: 10;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <img id="randomImage" src="/api/random" alt="随机图片" style="opacity:0;" onload="this.style.opacity='1'" />
+        <div class="loading" id="loadingText">加载中...</div>
+        <button class="refresh-btn" onclick="refreshImage()">🎲 换一张</button>
+    </div>
+    <script>
+        function refreshImage() {
+            const img = document.getElementById('randomImage');
+            const loading = document.getElementById('loadingText');
+            img.style.opacity = '0';
+            loading.style.display = 'block';
+            img.src = '/api/random?t=' + Date.now();
+        }
+        document.getElementById('randomImage').addEventListener('load', function() {
+            document.getElementById('loadingText').style.display = 'none';
+        });
+        document.getElementById('randomImage').addEventListener('error', function() {
+            document.getElementById('loadingText').textContent = '暂无图片，请往 image 文件夹中添加图片';
+        });
+    </script>
+</body>
+</html>
