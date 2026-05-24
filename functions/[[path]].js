@@ -1,12 +1,17 @@
+/**
+ * Cloudflare Pages Function - 随机图片 API
+ * 
+ * 访问站点时，会从 image 文件夹中随机选取一张图片，直接返回其内容。
+ * 不再使用 302 重定向，以避免用户保存图片时工具/浏览器重新请求原始 URL
+ * 导致"所见≠所存"的问题。
+ */
 export async function onRequest(context) {
     const { request, env } = context;
-    const url = new URL(request.url);
 
     try {
         // 1. 获取图片列表
-        // 注意：使用 env.ASSETS.fetch 直接读取部署好的静态文件
         const listResp = await env.ASSETS.fetch(new URL('/image-list.json', request.url));
-        
+
         if (!listResp.ok) {
             return new Response('无法读取图片列表 (image-list.json)，请检查构建日志。', { status: 500 });
         }
@@ -22,16 +27,24 @@ export async function onRequest(context) {
         const randomIndex = Math.floor(Math.random() * images.length);
         const imagePath = images[randomIndex];
 
-        // 3. 读取图片内容并返回
+        // 3. 直接通过 ASSETS.fetch 获取图片的二进制内容
+        //    不再使用 302 重定向，而是把图片内容作为响应直接返回。
+        //    这样用户无论"保存页面"还是"保存图片"，拿到的都是同一份数据。
         const imageResp = await env.ASSETS.fetch(new URL(imagePath, request.url));
-        
-        // 复制原始 Headers 并强制设置不缓存，确保每次刷新都是随机图
-        const newHeaders = new Headers(imageResp.headers);
-        newHeaders.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+
+        if (!imageResp.ok) {
+            return new Response('图片加载失败: ' + imagePath, { status: 500 });
+        }
+
+        // 4. 构建响应，保留原始 Content-Type，添加禁止缓存控制
+        const headers = new Headers(imageResp.headers);
+        headers.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+        // 移除 Content-Encoding 避免流式传输冲突
+        headers.delete('Content-Encoding');
 
         return new Response(imageResp.body, {
-            status: imageResp.status,
-            headers: newHeaders
+            status: 200,
+            headers
         });
 
     } catch (err) {
