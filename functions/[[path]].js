@@ -1,53 +1,114 @@
 /**
- * Cloudflare Pages Function - 随机图片 API
- * 
- * 访问站点时，会从 image 文件夹中随机选取一张图片，直接返回其内容。
- * 不再使用 302 重定向，以避免用户保存图片时工具/浏览器重新请求原始 URL
- * 导致"所见≠所存"的问题。
+ * Cloudflare Pages Function - random image site/API.
+ *
+ * Browser visits receive a tiny page with an <img> that points at the selected
+ * static image. That keeps page load random, while "Save image as..." saves the
+ * exact image currently displayed instead of re-requesting this random route.
+ *
+ * Non-HTML requests still get a random image response directly, preserving the
+ * old API-style behavior for tools or embeds that request the site as an image.
  */
 export async function onRequest(context) {
     const { request, env } = context;
 
     try {
-        // 1. 获取图片列表
-        const listResp = await env.ASSETS.fetch(new URL('/image-list.json', request.url));
+        const imagePath = await pickRandomImage(request, env);
+        const accept = request.headers.get('Accept') || '';
 
-        if (!listResp.ok) {
-            return new Response('无法读取图片列表 (image-list.json)，请检查构建日志。', { status: 500 });
+        if (accept.includes('text/html')) {
+            return renderImagePage(imagePath);
         }
 
-        const data = await listResp.json();
-        const images = data.images;
-
-        if (!images || images.length === 0) {
-            return new Response('image 文件夹中没有图片。', { status: 404 });
-        }
-
-        // 2. 随机抽取一张
-        const randomIndex = Math.floor(Math.random() * images.length);
-        const imagePath = images[randomIndex];
-
-        // 3. 直接通过 ASSETS.fetch 获取图片的二进制内容
-        //    不再使用 302 重定向，而是把图片内容作为响应直接返回。
-        //    这样用户无论"保存页面"还是"保存图片"，拿到的都是同一份数据。
-        const imageResp = await env.ASSETS.fetch(new URL(imagePath, request.url));
-
-        if (!imageResp.ok) {
-            return new Response('图片加载失败: ' + imagePath, { status: 500 });
-        }
-
-        // 4. 构建响应，保留原始 Content-Type，添加禁止缓存控制
-        const headers = new Headers(imageResp.headers);
-        headers.set('Cache-Control', 'no-cache, no-store, must-revalidate');
-        // 移除 Content-Encoding 避免流式传输冲突
-        headers.delete('Content-Encoding');
-
-        return new Response(imageResp.body, {
-            status: 200,
-            headers
-        });
-
+        return fetchImage(request, env, imagePath);
     } catch (err) {
-        return new Response('服务器内部错误: ' + err.message, { status: 500 });
+        return new Response('Server error: ' + err.message, { status: err.status || 500 });
     }
+}
+
+async function pickRandomImage(request, env) {
+    const listResp = await env.ASSETS.fetch(new URL('/image-list.json', request.url));
+
+    if (!listResp.ok) {
+        throw new Error('Cannot read image-list.json. Run the image list generator before deploying.');
+    }
+
+    const data = await listResp.json();
+    const images = data.images;
+
+    if (!images || images.length === 0) {
+        const error = new Error('No images found in the image directory.');
+        error.status = 404;
+        throw error;
+    }
+
+    return images[Math.floor(Math.random() * images.length)];
+}
+
+async function fetchImage(request, env, imagePath) {
+    const imageResp = await env.ASSETS.fetch(new URL(imagePath, request.url));
+
+    if (!imageResp.ok) {
+        return new Response('Failed to load image: ' + imagePath, { status: 500 });
+    }
+
+    const headers = new Headers(imageResp.headers);
+    headers.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+    headers.delete('Content-Encoding');
+
+    return new Response(imageResp.body, {
+        status: 200,
+        headers
+    });
+}
+
+function renderImagePage(imagePath) {
+    const escapedPath = escapeHtml(imagePath);
+    const html = `<!doctype html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Random Image</title>
+    <style>
+        html,
+        body {
+            margin: 0;
+            min-height: 100%;
+            background: #111;
+        }
+
+        body {
+            display: grid;
+            place-items: center;
+        }
+
+        img {
+            display: block;
+            max-width: 100vw;
+            max-height: 100vh;
+            object-fit: contain;
+        }
+    </style>
+</head>
+<body>
+    <img src="${escapedPath}" alt="">
+</body>
+</html>`;
+
+    return new Response(html, {
+        headers: {
+            'Content-Type': 'text/html; charset=utf-8',
+            'Cache-Control': 'no-cache, no-store, must-revalidate'
+        }
+    });
+}
+
+function escapeHtml(value) {
+    return value.replace(/[&<>"']/g, char => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;'
+    }[char]));
 }
